@@ -18,59 +18,78 @@ lon1 = math.radians(lon1)
 s = 150000  # 大地线长，单位：米
 A1 = math.radians(45.0)  # 初始方位角，单位：弧度
 
-# 平均半径
-R = (a + b) / 2
-
-# 计算法线曲率半径N和子午圈曲率半径M
+# 计算法线曲率半径N
 def compute_N(B):
     return a / math.sqrt(1 - e2 * math.sin(B)**2)
 
+# 计算子午圈曲率半径M
 def compute_M(B):
     return a * (1 - e2) / (1 - e2 * math.sin(B)**2)**1.5
 
-# 计算大地方位角变化量
-def delta_A(B, A):
-    N = compute_N(B)
-    return (math.tan(B) * math.sin(A)) / N
-
 # 计算终点的纬度和经度
-def compute_lat_lon(lat1, lon1, s, A1):
-    Bm = lat1
-    Lm = lon1
+def direct_geodetic(lat1, lon1, s, A1):
+    alpha = A1  # 初始方位角
+    sigma = s / b  # 归化的大地线长
+
+    # 高斯平均引数
+    beta1 = math.atan((1 - f) * math.tan(lat1))
+    U1 = math.atan((1 - f) * math.tan(lat1))
+    sinU1 = math.sin(U1)
+    cosU1 = math.cos(U1)
     
-    epsilon = 1e-10  # 收敛条件
+    # 初始计算
+    sigma1 = math.atan2(math.tan(U1), math.cos(A1))
+    sin_alpha = cosU1 * math.sin(A1)
+    cos2_alpha = 1 - sin_alpha**2
+    u2 = cos2_alpha * (a**2 - b**2) / b**2
+    A = 1 + (u2 / 16384) * (4096 + u2 * (-768 + u2 * (320 - 175 * u2)))
+    B = (u2 / 1024) * (256 + u2 * (-128 + u2 * (74 - 47 * u2)))
 
-    for _ in range(100):
-        N = compute_N(Bm)
-        M = compute_M(Bm)
-        
-        delta_B = (s * math.cos(A1)) / M
-        delta_L = (s * math.sin(A1)) / (N * math.cos(Bm))
-        delta_A1 = delta_A(Bm, A1)
-        
-        Bm_new = Bm + delta_B / 2
-        Lm_new = Lm + delta_L / 2
-        A1_new = A1 + delta_A1 / 2
-        
-        if (abs(Bm_new - Bm) < epsilon and abs(Lm_new - Lm) < epsilon and abs(A1_new - A1) < epsilon):
+    sigma_p = sigma
+    sigma = s / (b * A)
+    sin_sigma = 0
+    cos_sigma = 0
+    cos2_sigma_m = 0
+    delta_sigma = 0
+
+    for _ in range(1000):
+        cos2_sigma_m = math.cos(2 * sigma1 + sigma)
+        sin_sigma = math.sin(sigma)
+        cos_sigma = math.cos(sigma)
+        delta_sigma = B * sin_sigma * (cos2_sigma_m + (B / 4) * (cos_sigma * (-1 + 2 * cos2_sigma_m**2) - (B / 6) * cos2_sigma_m * (-3 + 4 * sin_sigma**2) * (-3 + 4 * cos2_sigma_m**2)))
+        sigma_p = sigma
+        sigma = s / (b * A) + delta_sigma
+        if abs(sigma - sigma_p) < 1e-12:
             break
-        
-        Bm = Bm_new
-        Lm = Lm_new
-        A1 = A1_new
 
-    return Bm, Lm, A1
+    tmp = sinU1 * sin_sigma - cosU1 * cos_sigma * math.cos(A1)
+    lat2 = math.atan2(sinU1 * cos_sigma + cosU1 * sin_sigma * math.cos(A1), (1 - f) * math.sqrt(sin_alpha**2 + tmp**2))
+    lamb = math.atan2(sin_sigma * math.sin(A1), cosU1 * cos_sigma - sinU1 * sin_sigma * math.cos(A1))
+    C = (f / 16) * cos2_alpha * (4 + f * (4 - 3 * cos2_alpha))
+    L = lamb - (1 - C) * f * sin_alpha * (sigma + C * sin_sigma * (cos2_sigma_m + C * cos_sigma * (-1 + 2 * cos2_sigma_m**2)))
+    
+    lon2 = lon1 + L
 
-lat2, lon2, A2 = compute_lat_lon(lat1, lon1, s, A1)
+    # 转换为度
+    lat2 = math.degrees(lat2)
+    lon2 = math.degrees(lon2)
 
-# 计算终点的反方位角
-A2 = math.degrees(A2) + 180
-if A2 >= 360:
-    A2 -= 360
+    # 确保经度在-180度到180度之间
+    if lon2 > 180:
+        lon2 -= 360
+    elif lon2 < -180:
+        lon2 += 360
 
-# 转换回度
-lat2 = math.degrees(lat2)
-lon2 = math.degrees(lon2)
+    # 终点方位角
+    A2 = math.atan2(sin_alpha, -tmp)
+    A2 = math.degrees(A2) + 180
+    if A2 >= 360:
+        A2 -= 360
+
+    return lat2, lon2, A2
+
+# 计算终点的纬度、经度和方位角
+lat2, lon2, A2 = direct_geodetic(lat1, lon1, s, A1)
 
 # 输出最终结果
 print("计算结果：")
