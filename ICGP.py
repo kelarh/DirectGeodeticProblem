@@ -21,8 +21,6 @@ def H(lat1, lat2):
 
 # 计算大地线长度
 def calculate_distance(lat1, lon1, lat2, lon2, a, f):
-    # 使用Vincenty公式计算两点间的距离，这是一个迭代过程
-    # 这里使用简化的版本，实际应用中可能需要更复杂的迭代算法
     U1 = math.atan((1 - f) * math.tan(lat1_rad))
     U2 = math.atan((1 - f) * math.tan(lat2_rad))
     L = delta_lon
